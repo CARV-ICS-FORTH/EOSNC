@@ -18,6 +18,7 @@
 
 uint64_t number_of_omp_threads;
 uint64_t *kernel_execution_samples;
+uint64_t *kernel_timestamp_samples;
 uint64_t *instrumentation_overhead_samples;
 
 uint64_t get_time_in_ns(struct timespec *tspec)
@@ -33,8 +34,9 @@ uint64_t initialize(uint64_t number_of_samples)
     number_of_omp_threads = omp_get_max_threads();
     number_of_samples_per_thread = number_of_samples / number_of_omp_threads; 
     kernel_execution_samples = (uint64_t *)malloc(sizeof(uint64_t) * number_of_samples);
+    kernel_timestamp_samples = (uint64_t *)malloc(sizeof(uint64_t) * number_of_samples);  // NEW: Allocate timestamp array
     instrumentation_overhead_samples = (uint64_t *)malloc( sizeof(uint64_t) * number_of_samples);
-    if(!instrumentation_overhead_samples || ! kernel_execution_samples)
+    if(!instrumentation_overhead_samples || !kernel_execution_samples || !kernel_timestamp_samples)
     {
         printf("failed to allocate required memory to hold all the samples");
         exit(-ENOMEM);
@@ -44,6 +46,7 @@ uint64_t initialize(uint64_t number_of_samples)
     {
         instrumentation_overhead_samples[i] = 0;
         kernel_execution_samples[i] = 0;
+        kernel_timestamp_samples[i] = 0;
     }
 #endif
     return number_of_samples_per_thread;
@@ -90,11 +93,13 @@ int main(int argc, char *argv[])
     {
         uint64_t j, start, stop;
         uint64_t *sample_slice;
+        uint64_t *timestamp_slice;
         char result_fname[MAX_FNAME];
         dtype r, a, b;
         struct timespec slice_ts;
         int id = omp_get_thread_num();
         sample_slice = kernel_execution_samples + id * per_thread_sample_num;
+        timestamp_slice = kernel_timestamp_samples + id * per_thread_sample_num;
     #pragma omp barrier
         for(j = 0; j < per_thread_sample_num; ++j)
         {
@@ -108,14 +113,16 @@ int main(int argc, char *argv[])
             kernel_ab(r, a, b);
             stop = get_time_in_ns(&slice_ts);
             sample_slice[j] = stop - start;
+            timestamp_slice[j] = start;
         }
     #pragma omp barrier
         sprintf(result_fname, "%s%d%s", FNAME_PREFIX, id, FNAME_POSTFIX);
 #ifndef SKIP_RAW_DATA
         FILE *fp = fopen(result_fname, "w");
+        fprintf(fp, "timestamp_ns,duration_ns\n");
         for(j = 0; j < per_thread_sample_num; ++j)
         {
-            fprintf(fp, "%lu\n", sample_slice[j]);
+            fprintf(fp, "%lu,%lu\n", timestamp_slice[j], sample_slice[j]);
         }
         fclose(fp);
 #endif
