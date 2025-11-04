@@ -2,6 +2,10 @@
 
 SAMPLE_NUMBER=32000000
 
+export OMP_PROC_BIND=true
+export OMP_PLACES=cores
+
+
 re='^[0-9]+$'
 if ! [[ $1 =~ $re ]] ; then
    echo "error: '$1' is not a number" >&2; exit 1
